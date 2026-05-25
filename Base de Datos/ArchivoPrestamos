@@ -1,0 +1,207 @@
+// ============================================================
+//  BibliotecaUDB | BaseDeDatos/ArchivoPrestamos.cs
+//  Persistencia – Módulo C (Préstamos)
+//
+//  Formato CSV (5 campos, sin cabecera):
+//  CarneUsuario,CodigoLibro,FechaPrestamo,FechaDevolucion,Estado
+// ============================================================
+
+using System;
+using System.IO;
+using BibliotecaUDB.Modelos;
+using BibliotecaUDB.Validaciones;
+
+namespace BibliotecaUDB.BaseDeDatos
+{
+    static class ArchivoPrestamos
+    {
+        private const int MAX_PRESTAMOS = 10;
+        private const int CAMPOS_CSV    = 5;
+
+        private const string CARPETA = "data";
+        private static readonly string ARCHIVO = Path.Combine(CARPETA, "prestamos.csv");
+
+        // ════════════════════════════════════════════════════
+        // CARGAR
+        // ════════════════════════════════════════════════════
+        public static void Cargar(Prestamo[] prestamos, ref int totalPrestamos)
+        {
+            totalPrestamos = 0;
+
+            if (!File.Exists(ARCHIVO))
+            {
+                Informacion($"Archivo \"{ARCHIVO}\" no encontrado. Se iniciará sin préstamos.");
+                return;
+            }
+
+            try
+            {
+                StreamReader sr = new StreamReader(ARCHIVO);
+                string linea;
+                int nLinea = 0;
+                int ignoradas = 0;
+
+                while ((linea = sr.ReadLine()) != null)
+                {
+                    nLinea++;
+
+                    if (string.IsNullOrWhiteSpace(linea))
+                        continue;
+
+                    if (totalPrestamos >= MAX_PRESTAMOS)
+                    {
+                        Advertencia(
+                            $"Límite de {MAX_PRESTAMOS} préstamos alcanzado. " +
+                            $"Las líneas restantes serán ignoradas."
+                        );
+                        break;
+                    }
+
+                    string[] campos = linea.Split(',');
+
+                    ResultadoValidacion rv =
+                        Validador.ValidarCamposCSVPrestamo(campos);
+
+                    if (!rv.Valido)
+                    {
+                        Advertencia($"Línea {nLinea} ignorada — {rv.Mensaje}");
+                        ignoradas++;
+                        continue;
+                    }
+
+                    try
+                    {
+                        Prestamo prestamo = new Prestamo();
+
+                        prestamo.CarneUsuario    = campos[0].Trim();
+                        prestamo.CodigoLibro     = campos[1].Trim().ToUpper();
+                        prestamo.FechaPrestamo   = campos[2].Trim();
+                        prestamo.FechaDevolucion = campos[3].Trim();
+                        prestamo.Estado          = campos[4].Trim().ToLower();
+
+                        // Evitar duplicado exacto
+                        bool duplicado = false;
+
+                        for (int i = 0; i < totalPrestamos; i++)
+                        {
+                            if (prestamos[i].CarneUsuario == prestamo.CarneUsuario &&
+                                prestamos[i].CodigoLibro  == prestamo.CodigoLibro  &&
+                                prestamos[i].FechaPrestamo == prestamo.FechaPrestamo)
+                            {
+                                duplicado = true;
+                                break;
+                            }
+                        }
+
+                        if (duplicado)
+                        {
+                            Advertencia($"Línea {nLinea}: préstamo duplicado ignorado.");
+                            ignoradas++;
+                            continue;
+                        }
+
+                        prestamos[totalPrestamos] = prestamo;
+                        totalPrestamos++;
+                    }
+                    catch (Exception)
+                    {
+                        Advertencia($"Línea {nLinea}: error inesperado de formato. Línea ignorada.");
+                        ignoradas++;
+                    }
+                }
+
+                sr.Close();
+
+                if (totalPrestamos > 0)
+                    Exito($"Préstamos cargados: {totalPrestamos} registro(s) desde \"{ARCHIVO}\"." +
+                          (ignoradas > 0 ? $" ({ignoradas} línea(s) ignorada(s))" : ""));
+                else
+                    Informacion($"\"{ARCHIVO}\" existe pero no contiene registros válidos.");
+            }
+            catch (IOException ex)
+            {
+                Error($"Error de acceso al archivo \"{ARCHIVO}\": {ex.Message}");
+                Error("El sistema continuará sin datos de préstamos.");
+            }
+            catch (Exception ex)
+            {
+                Error($"Error inesperado al cargar préstamos: {ex.Message}");
+            }
+        }
+
+        // ════════════════════════════════════════════════════
+        // GUARDAR
+        // ════════════════════════════════════════════════════
+        public static void Guardar(Prestamo[] prestamos, int totalPrestamos)
+        {
+            try
+            {
+                if (!Directory.Exists(CARPETA))
+                {
+                    Directory.CreateDirectory(CARPETA);
+                    Informacion($"Carpeta \"{CARPETA}\" creada automáticamente.");
+                }
+
+                StreamWriter sw = new StreamWriter(ARCHIVO, false);
+
+                for (int i = 0; i < totalPrestamos; i++)
+                {
+                    sw.WriteLine(
+                        prestamos[i].CarneUsuario    + "," +
+                        prestamos[i].CodigoLibro     + "," +
+                        prestamos[i].FechaPrestamo   + "," +
+                        prestamos[i].FechaDevolucion + "," +
+                        prestamos[i].Estado
+                    );
+                }
+
+                sw.Close();
+
+                if (totalPrestamos > 0)
+                    Exito($"Préstamos guardados: {totalPrestamos} registro(s) en \"{ARCHIVO}\".");
+                else
+                    Informacion($"No hay préstamos que guardar. \"{ARCHIVO}\" quedará vacío.");
+            }
+            catch (IOException ex)
+            {
+                Error($"Error de escritura en \"{ARCHIVO}\": {ex.Message}");
+                Error("Los datos NO fueron guardados.");
+            }
+            catch (Exception ex)
+            {
+                Error($"Error inesperado al guardar préstamos: {ex.Message}");
+            }
+        }
+
+        // ════════════════════════════════════════════════════
+        // MENSAJES
+        // ════════════════════════════════════════════════════
+        private static void Exito(string msg)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"  [✔] {msg}");
+            Console.ResetColor();
+        }
+
+        private static void Advertencia(string msg)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"  [!] {msg}");
+            Console.ResetColor();
+        }
+
+        private static void Error(string msg)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"  [✖] {msg}");
+            Console.ResetColor();
+        }
+
+        private static void Informacion(string msg)
+        {
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine($"  [i] {msg}");
+            Console.ResetColor();
+        }
+    }
+}
