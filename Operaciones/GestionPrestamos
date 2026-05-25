@@ -1,0 +1,1217 @@
+// ============================================================
+//  BibliotecaUDB | Operaciones/GestionPrestamos.cs
+//  Módulo C – Gestión de Préstamos
+//
+//  Estructuras de control presentes:
+//    ✔ if-else    → validaciones cruzadas, flujo de negocio
+//    ✔ switch     → menús, clasificación de estado del préstamo
+//    ✔ for        → recorrer arreglos de préstamos, libros y usuarios
+//    ✔ while      → reintentar entradas inválidas y fechas
+//    ✔ do-while   → confirmaciones obligatorias antes de operar
+//    ✔ try-catch  → manejo de excepciones en parseo de datos
+// ============================================================
+
+using System;
+using BibliotecaUDB.Modelos;
+
+namespace BibliotecaUDB.Operaciones
+{
+    static class GestionPrestamos
+    {
+        // ────────────────────────────────────────────────────
+        //  Constantes del módulo
+        // ────────────────────────────────────────────────────
+        private const int MAX_PRESTAMOS   = 10;
+        private const int LONGITUD_FECHA  = 10;   // dd/mm/yyyy
+
+        // ════════════════════════════════════════════════════
+        //  REGISTRAR PRÉSTAMO
+        //  Valida: usuario activo, libro existente,
+        //          ejemplares > 0, fechas en formato correcto.
+        //  Al registrar: decrementa ejemplares del libro.
+        // ════════════════════════════════════════════════════
+        public static void RegistrarPrestamo(
+            Prestamo[] prestamos, ref int totalPrestamos,
+            Usuario[]  usuarios,      int totalUsuarios,
+            Libro[]    libros,        int totalLibros)
+        {
+            Console.Clear();
+            Encabezado("REGISTRAR NUEVO PRÉSTAMO");
+
+            // if-else: verificar capacidad del arreglo de préstamos
+            if (totalPrestamos >= MAX_PRESTAMOS)
+            {
+                Error($"Límite alcanzado. El sistema admite un máximo de {MAX_PRESTAMOS} préstamos.");
+                Pausar();
+                return;
+            }
+
+            // if-else: verificar que haya usuarios registrados
+            if (totalUsuarios == 0)
+            {
+                Advertencia("No hay usuarios registrados. Registre un usuario antes de crear un préstamo.");
+                Pausar();
+                return;
+            }
+
+            // if-else: verificar que haya libros registrados
+            if (totalLibros == 0)
+            {
+                Advertencia("No hay libros registrados. Registre un libro antes de crear un préstamo.");
+                Pausar();
+                return;
+            }
+
+            Prestamo prestamo = new Prestamo();
+
+            // ══════════════════════════════════════
+            //  PASO 1 – Validar usuario
+            // ══════════════════════════════════════
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("  ── PASO 1: Identificación del usuario ──────────────────");
+            Console.ResetColor();
+
+            int indiceUsuario = -1;
+
+            // do-while: repetir hasta encontrar un carné válido y activo
+            do
+            {
+                Console.Write("\n  Carné del usuario (8 dígitos): ");
+                string inputCarne = Console.ReadLine().Trim();
+
+                // if-else: validar que no esté vacío
+                if (string.IsNullOrWhiteSpace(inputCarne))
+                {
+                    Advertencia("El carné no puede estar vacío.");
+                    continue;
+                }
+
+                // for: buscar el carné en el arreglo de usuarios
+                for (int i = 0; i < totalUsuarios; i++)
+                {
+                    if (usuarios[i].Carne == inputCarne)
+                    {
+                        indiceUsuario = i;
+                        break;
+                    }
+                }
+
+                // if-else: verificar si el carné existe
+                if (indiceUsuario == -1)
+                {
+                    Error($"El carné \"{inputCarne}\" no está registrado en el sistema.");
+                    indiceUsuario = -1;
+                    continue;
+                }
+
+                // if-else: verificar que el usuario esté activo
+                if (usuarios[indiceUsuario].Estado.ToLower() != "activo")
+                {
+                    Error($"El usuario \"{usuarios[indiceUsuario].NombreCompleto}\" está INACTIVO y no puede solicitar préstamos.");
+                    indiceUsuario = -1;
+                }
+
+            } while (indiceUsuario == -1);
+
+            // Mostrar datos del usuario encontrado
+            Console.WriteLine();
+            Exito($"Usuario verificado: {usuarios[indiceUsuario].NombreCompleto} [{usuarios[indiceUsuario].Carne}]");
+            prestamo.CarneUsuario = usuarios[indiceUsuario].Carne;
+
+            // ══════════════════════════════════════
+            //  PASO 2 – Validar libro disponible
+            // ══════════════════════════════════════
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("  ── PASO 2: Selección del libro ─────────────────────────");
+            Console.ResetColor();
+
+            // Mostrar solo libros con stock disponible
+            int librosDisponibles = 0;
+
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"  {"CÓDIGO",-11}{"TÍTULO",-32}{"AUTOR",-24}{"EJEMPLARES",-12}{"ESTADO",-12}");
+            Separador();
+            Console.ResetColor();
+
+            // for: recorrer libros y mostrar solo los que tienen ejemplares
+            for (int i = 0; i < totalLibros; i++)
+            {
+                // if-else: clasificar por disponibilidad
+                if (libros[i].EjemplaresDisponibles > 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.White;
+                    librosDisponibles++;
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.DarkGray;
+                }
+
+                Console.WriteLine(
+                    $"  {libros[i].Codigo,-11}" +
+                    $"{Cortar(libros[i].Titulo, 31),-32}" +
+                    $"{Cortar(libros[i].Autor, 23),-24}" +
+                    $"{libros[i].EjemplaresDisponibles,-12}" +
+                    $"{(libros[i].EjemplaresDisponibles > 0 ? "Disponible" : "Sin stock"),-12}"
+                );
+
+                Console.ResetColor();
+            }
+
+            Separador();
+
+            // if-else: verificar que haya al menos un libro disponible
+            if (librosDisponibles == 0)
+            {
+                Error("No hay libros con ejemplares disponibles en este momento.");
+                Pausar();
+                return;
+            }
+
+            int indiceLibro = -1;
+
+            // do-while: repetir hasta obtener un código de libro válido y disponible
+            do
+            {
+                Console.Write("\n  Código del libro a prestar (8 caracteres): ");
+                string inputCodigo = Console.ReadLine().Trim().ToUpper();
+
+                // if-else: validar que no esté vacío
+                if (string.IsNullOrWhiteSpace(inputCodigo))
+                {
+                    Advertencia("El código no puede estar vacío.");
+                    continue;
+                }
+
+                // for: buscar el código en el arreglo de libros
+                for (int i = 0; i < totalLibros; i++)
+                {
+                    if (libros[i].Codigo == inputCodigo)
+                    {
+                        indiceLibro = i;
+                        break;
+                    }
+                }
+
+                // if-else: verificar si el código existe
+                if (indiceLibro == -1)
+                {
+                    Error($"El código \"{inputCodigo}\" no está registrado en el sistema.");
+                    continue;
+                }
+
+                // if-else: verificar que tenga ejemplares disponibles
+                if (libros[indiceLibro].EjemplaresDisponibles <= 0)
+                {
+                    Error($"El libro \"{libros[indiceLibro].Titulo}\" no tiene ejemplares disponibles (Sin stock).");
+                    indiceLibro = -1;
+                }
+
+            } while (indiceLibro == -1);
+
+            // Mostrar el libro seleccionado
+            Console.WriteLine();
+            Exito($"Libro seleccionado: {libros[indiceLibro].Titulo} [{libros[indiceLibro].Codigo}]");
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine($"  Ejemplares disponibles antes del préstamo: {libros[indiceLibro].EjemplaresDisponibles}");
+            Console.ResetColor();
+            prestamo.CodigoLibro = libros[indiceLibro].Codigo;
+
+            // ══════════════════════════════════════
+            //  PASO 3 – Fechas del préstamo
+            // ══════════════════════════════════════
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("  ── PASO 3: Fechas del préstamo ─────────────────────────");
+            Console.ResetColor();
+
+            prestamo.FechaPrestamo   = LeerFecha("Fecha de préstamo         (dd/mm/yyyy)");
+            prestamo.FechaDevolucion = LeerFechaDevolucion(prestamo.FechaPrestamo);
+
+            // ── Estado inicial del préstamo ──────────────────
+            prestamo.Estado = "activo";
+
+            // ══════════════════════════════════════
+            //  CONFIRMACIÓN FINAL
+            // ══════════════════════════════════════
+            Console.WriteLine();
+            Separador();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("  Resumen del préstamo a registrar:");
+            Console.ResetColor();
+            Console.WriteLine();
+            MostrarFichaPrestamo(prestamo, totalPrestamos + 1, usuarios, totalUsuarios, libros, totalLibros);
+            Console.WriteLine();
+
+            // do-while: confirmar el registro del préstamo
+            string respuesta;
+            do
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write("  ¿Confirma el registro de este préstamo? (S/N): ");
+                Console.ResetColor();
+                respuesta = Console.ReadLine().Trim().ToUpper();
+
+                if (respuesta != "S" && respuesta != "N")
+                    Advertencia("Ingrese S para confirmar o N para cancelar.");
+
+            } while (respuesta != "S" && respuesta != "N");
+
+            // if-else: procesar confirmación
+            if (respuesta == "N")
+            {
+                Advertencia("Registro cancelado. No se realizó ningún cambio.");
+                Pausar();
+                return;
+            }
+
+            // Registrar el préstamo y decrementar ejemplares del libro
+            prestamos[totalPrestamos] = prestamo;
+            totalPrestamos++;
+            libros[indiceLibro].EjemplaresDisponibles--;
+
+            Console.WriteLine();
+            Separador();
+            Exito($"Préstamo registrado correctamente para [{prestamo.CarneUsuario}] → [{prestamo.CodigoLibro}].");
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine($"  Ejemplares restantes del libro : {libros[indiceLibro].EjemplaresDisponibles}");
+            Console.WriteLine($"  Préstamos activos en sistema   : {totalPrestamos}/{MAX_PRESTAMOS}");
+            Console.ResetColor();
+            Pausar();
+        }
+
+        // ════════════════════════════════════════════════════
+        //  REGISTRAR DEVOLUCIÓN
+        //  Busca el préstamo activo por carné + código,
+        //  cambia estado a "devuelto" e incrementa ejemplares.
+        // ════════════════════════════════════════════════════
+        public static void RegistrarDevolucion(
+            Prestamo[] prestamos, int totalPrestamos,
+            Libro[]    libros,    int totalLibros,
+            Usuario[]  usuarios,  int totalUsuarios)
+        {
+            Console.Clear();
+            Encabezado("REGISTRAR DEVOLUCIÓN DE LIBRO");
+
+            // if-else: verificar que haya préstamos
+            if (totalPrestamos == 0)
+            {
+                Advertencia("No hay préstamos registrados en el sistema.");
+                Pausar();
+                return;
+            }
+
+            // Verificar si existe al menos un préstamo activo
+            int activosTotales = 0;
+
+            // for: contar préstamos en estado activo
+            for (int i = 0; i < totalPrestamos; i++)
+            {
+                if (prestamos[i].Estado.ToLower() == "activo")
+                    activosTotales++;
+            }
+
+            // if-else: no hay nada que devolver si todo está devuelto
+            if (activosTotales == 0)
+            {
+                Advertencia("No hay préstamos activos pendientes de devolución.");
+                Pausar();
+                return;
+            }
+
+            // Mostrar listado de préstamos activos
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"\n  Préstamos activos ({activosTotales}):\n");
+            Console.WriteLine(
+                $"  {"N°",-4}{"CARNÉ",-11}{"NOMBRE USUARIO",-24}" +
+                $"{"CÓDIGO LIBRO",-14}{"TÍTULO",-26}{"F.PRÉSTAMO",-13}{"F.DEVOLUCIÓN",-14}"
+            );
+            Separador();
+            Console.ResetColor();
+
+            // for: mostrar solo los préstamos con estado activo
+            for (int i = 0; i < totalPrestamos; i++)
+            {
+                // if-else: filtrar por estado activo
+                if (prestamos[i].Estado.ToLower() != "activo") continue;
+
+                // Buscar nombre del usuario para mostrar
+                string nombreUsuario = "Desconocido";
+
+                // for: buscar el usuario correspondiente al carné
+                for (int j = 0; j < totalUsuarios; j++)
+                {
+                    if (usuarios[j].Carne == prestamos[i].CarneUsuario)
+                    {
+                        nombreUsuario = usuarios[j].NombreCompleto;
+                        break;
+                    }
+                }
+
+                // Buscar título del libro para mostrar
+                string tituloLibro = "Desconocido";
+
+                // for: buscar el libro correspondiente al código
+                for (int k = 0; k < totalLibros; k++)
+                {
+                    if (libros[k].Codigo == prestamos[i].CodigoLibro)
+                    {
+                        tituloLibro = libros[k].Titulo;
+                        break;
+                    }
+                }
+
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine(
+                    $"  {(i + 1),-4}" +
+                    $"{prestamos[i].CarneUsuario,-11}" +
+                    $"{Cortar(nombreUsuario, 23),-24}" +
+                    $"{prestamos[i].CodigoLibro,-14}" +
+                    $"{Cortar(tituloLibro, 25),-26}" +
+                    $"{prestamos[i].FechaPrestamo,-13}" +
+                    $"{prestamos[i].FechaDevolucion,-14}"
+                );
+                Console.ResetColor();
+            }
+
+            Separador();
+
+            // Capturar carné para identificar la devolución
+            Console.Write("\n  Carné del usuario que devuelve: ");
+            string carne = Console.ReadLine().Trim();
+
+            // if-else: validar que no esté vacío
+            if (string.IsNullOrWhiteSpace(carne))
+            {
+                Advertencia("Debe ingresar un carné.");
+                Pausar();
+                return;
+            }
+
+            // Capturar código del libro que se devuelve
+            Console.Write("  Código del libro a devolver  : ");
+            string codigoLibro = Console.ReadLine().Trim().ToUpper();
+
+            // if-else: validar que no esté vacío
+            if (string.IsNullOrWhiteSpace(codigoLibro))
+            {
+                Advertencia("Debe ingresar el código del libro.");
+                Pausar();
+                return;
+            }
+
+            // Buscar el préstamo activo que coincida con carné + código
+            int indicePrestamo = -1;
+
+            // for: localizar el préstamo activo correspondiente
+            for (int i = 0; i < totalPrestamos; i++)
+            {
+                // if-else: debe coincidir carné, código y estar activo
+                if (prestamos[i].CarneUsuario == carne       &&
+                    prestamos[i].CodigoLibro  == codigoLibro &&
+                    prestamos[i].Estado.ToLower() == "activo")
+                {
+                    indicePrestamo = i;
+                    break;
+                }
+            }
+
+            // if-else: verificar si se encontró el préstamo
+            if (indicePrestamo == -1)
+            {
+                Error($"No se encontró un préstamo ACTIVO para el carné [{carne}] con el libro [{codigoLibro}].");
+                Pausar();
+                return;
+            }
+
+            // Mostrar ficha del préstamo encontrado
+            Console.WriteLine();
+            MostrarFichaPrestamo(prestamos[indicePrestamo], indicePrestamo + 1, usuarios, totalUsuarios, libros, totalLibros);
+            Console.WriteLine();
+
+            // do-while: confirmar la devolución
+            string respuesta;
+            do
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write("  ¿Confirma la devolución de este libro? (S/N): ");
+                Console.ResetColor();
+                respuesta = Console.ReadLine().Trim().ToUpper();
+
+                if (respuesta != "S" && respuesta != "N")
+                    Advertencia("Ingrese S para confirmar o N para cancelar.");
+
+            } while (respuesta != "S" && respuesta != "N");
+
+            // if-else: procesar o cancelar la devolución
+            if (respuesta == "N")
+            {
+                Advertencia("Devolución cancelada. No se realizó ningún cambio.");
+                Pausar();
+                return;
+            }
+
+            // Actualizar estado del préstamo a "devuelto"
+            prestamos[indicePrestamo].Estado = "devuelto";
+
+            // Buscar el libro y devolver el ejemplar al inventario
+            int indiceLibroDevuelto = -1;
+
+            // for: localizar el libro en el arreglo para incrementar ejemplares
+            for (int i = 0; i < totalLibros; i++)
+            {
+                if (libros[i].Codigo == codigoLibro)
+                {
+                    indiceLibroDevuelto = i;
+                    break;
+                }
+            }
+
+            // if-else: incrementar solo si se encontró el libro
+            if (indiceLibroDevuelto != -1)
+            {
+                libros[indiceLibroDevuelto].EjemplaresDisponibles++;
+
+                Console.WriteLine();
+                Separador();
+                Exito($"Devolución registrada. Libro [{codigoLibro}] devuelto al inventario.");
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($"  Ejemplares disponibles ahora: {libros[indiceLibroDevuelto].EjemplaresDisponibles}");
+                Console.ResetColor();
+            }
+            else
+            {
+                // if-else: caso improbable pero seguro — libro eliminado del sistema
+                Console.WriteLine();
+                Separador();
+                Exito("Devolución registrada. (El libro ya no existe en catálogo, inventario no modificado.)");
+            }
+
+            Pausar();
+        }
+
+        // ════════════════════════════════════════════════════
+        //  HISTORIAL ACTIVO DE UN USUARIO
+        //  Muestra todos los préstamos en estado "activo"
+        //  asociados al carné ingresado.
+        // ════════════════════════════════════════════════════
+        public static void HistorialActivoUsuario(
+            Prestamo[] prestamos, int totalPrestamos,
+            Libro[]    libros,    int totalLibros,
+            Usuario[]  usuarios,  int totalUsuarios)
+        {
+            Console.Clear();
+            Encabezado("HISTORIAL DE PRÉSTAMOS ACTIVOS");
+
+            // if-else: verificar que haya préstamos
+            if (totalPrestamos == 0)
+            {
+                Advertencia("No hay préstamos registrados en el sistema.");
+                Pausar();
+                return;
+            }
+
+            Console.Write("  Carné del usuario a consultar: ");
+            string carne = Console.ReadLine().Trim();
+
+            // if-else: validar que no esté vacío
+            if (string.IsNullOrWhiteSpace(carne))
+            {
+                Advertencia("Debe ingresar un carné para realizar la consulta.");
+                Pausar();
+                return;
+            }
+
+            // Verificar que el carné exista en el sistema
+            int indiceUsuario = -1;
+
+            // for: buscar el usuario en el arreglo
+            for (int i = 0; i < totalUsuarios; i++)
+            {
+                if (usuarios[i].Carne == carne)
+                {
+                    indiceUsuario = i;
+                    break;
+                }
+            }
+
+            // if-else: carné no registrado
+            if (indiceUsuario == -1)
+            {
+                Error($"El carné \"{carne}\" no está registrado en el sistema.");
+                Pausar();
+                return;
+            }
+
+            // Mostrar datos del usuario
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"  Usuario : {usuarios[indiceUsuario].NombreCompleto}");
+            Console.WriteLine($"  Carné   : {usuarios[indiceUsuario].Carne}");
+            Console.WriteLine($"  Estado  : {usuarios[indiceUsuario].Estado.ToUpper()}");
+            Console.ResetColor();
+            Separador();
+
+            int prestamosActivos = 0;
+            int numeracion       = 0;
+
+            // for: recorrer todos los préstamos filtrando por carné y estado activo
+            for (int i = 0; i < totalPrestamos; i++)
+            {
+                // if-else: filtrar por carné del usuario y estado activo
+                if (prestamos[i].CarneUsuario != carne)              continue;
+                if (prestamos[i].Estado.ToLower() != "activo")       continue;
+
+                numeracion++;
+
+                // Buscar datos del libro para el resumen
+                string tituloLibro    = "Libro no encontrado";
+                string autorLibro     = "—";
+                string categoriaLibro = "—";
+                int    ejemplaresLibro = 0;
+
+                // for: localizar el libro correspondiente al préstamo
+                for (int j = 0; j < totalLibros; j++)
+                {
+                    if (libros[j].Codigo == prestamos[i].CodigoLibro)
+                    {
+                        tituloLibro    = libros[j].Titulo;
+                        autorLibro     = libros[j].Autor;
+                        categoriaLibro = libros[j].Categoria;
+                        ejemplaresLibro = libros[j].EjemplaresDisponibles;
+                        break;
+                    }
+                }
+
+                // if-else: primer resultado → imprimir encabezado de tabla
+                if (prestamosActivos == 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Cyan;
+                    Console.WriteLine(
+                        $"\n  {"N°",-4}{"CÓDIGO",-11}{"TÍTULO DEL LIBRO",-28}" +
+                        $"{"AUTOR",-22}{"F.PRÉSTAMO",-13}{"F.DEVOLUCIÓN",-14}{"ESTADO",-10}"
+                    );
+                    Separador();
+                    Console.ResetColor();
+                }
+
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine(
+                    $"  {numeracion,-4}" +
+                    $"{prestamos[i].CodigoLibro,-11}" +
+                    $"{Cortar(tituloLibro, 27),-28}" +
+                    $"{Cortar(autorLibro, 21),-22}" +
+                    $"{prestamos[i].FechaPrestamo,-13}" +
+                    $"{prestamos[i].FechaDevolucion,-14}" +
+                    $"{"● ACTIVO",-10}"
+                );
+                Console.ResetColor();
+
+                prestamosActivos++;
+            }
+
+            // if-else: resultado de la búsqueda
+            if (prestamosActivos == 0)
+            {
+                Console.WriteLine();
+                Advertencia($"El usuario [{carne}] no tiene préstamos activos en este momento.");
+            }
+            else
+            {
+                Separador();
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine($"  Total de préstamos activos: {prestamosActivos}");
+                Console.ResetColor();
+            }
+
+            Pausar();
+        }
+
+        // ════════════════════════════════════════════════════
+        //  ACTUALIZAR ESTADO DEL PRÉSTAMO
+        //  Permite cambiar manualmente el estado de cualquier
+        //  préstamo entre "activo" y "devuelto".
+        // ════════════════════════════════════════════════════
+        public static void ActualizarEstadoPrestamo(
+            Prestamo[] prestamos, int totalPrestamos,
+            Libro[]    libros,    int totalLibros,
+            Usuario[]  usuarios,  int totalUsuarios)
+        {
+            Console.Clear();
+            Encabezado("ACTUALIZAR ESTADO DE PRÉSTAMO");
+
+            // if-else: verificar que haya préstamos registrados
+            if (totalPrestamos == 0)
+            {
+                Advertencia("No hay préstamos registrados en el sistema.");
+                Pausar();
+                return;
+            }
+
+            // Mostrar todos los préstamos con su estado actual
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"\n  {"N°",-4}{"CARNÉ",-11}{"CÓDIGO LIBRO",-14}{"F.PRÉSTAMO",-13}{"F.DEVOLUCIÓN",-14}{"ESTADO ACTUAL",-14}");
+            Separador();
+            Console.ResetColor();
+
+            // for: imprimir todos los préstamos con color según estado
+            for (int i = 0; i < totalPrestamos; i++)
+            {
+                // switch: asignar color según estado del préstamo
+                switch (prestamos[i].Estado.ToLower())
+                {
+                    case "activo":
+                        Console.ForegroundColor = ConsoleColor.White;
+                        break;
+                    case "devuelto":
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                        break;
+                    default:
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        break;
+                }
+
+                Console.WriteLine(
+                    $"  {(i + 1),-4}" +
+                    $"{prestamos[i].CarneUsuario,-11}" +
+                    $"{prestamos[i].CodigoLibro,-14}" +
+                    $"{prestamos[i].FechaPrestamo,-13}" +
+                    $"{prestamos[i].FechaDevolucion,-14}" +
+                    $"{prestamos[i].Estado.ToUpper(),-14}"
+                );
+
+                Console.ResetColor();
+            }
+
+            Separador();
+
+            // Seleccionar préstamo por número de fila
+            int indicePrestamo = -1;
+
+            // while: repetir hasta obtener un número de fila válido
+            while (indicePrestamo == -1)
+            {
+                Console.Write($"\n  Ingrese el N° del préstamo a actualizar (1 – {totalPrestamos}): ");
+
+                try
+                {
+                    int fila = int.Parse(Console.ReadLine());
+
+                    // if-else: validar rango
+                    if (fila < 1 || fila > totalPrestamos)
+                    {
+                        Advertencia($"Ingrese un número entre 1 y {totalPrestamos}.");
+                    }
+                    else
+                    {
+                        indicePrestamo = fila - 1;
+                    }
+                }
+                catch (FormatException)
+                {
+                    Advertencia("Ingrese únicamente un número entero.");
+                }
+                catch (OverflowException)
+                {
+                    Advertencia("El número ingresado está fuera del rango permitido.");
+                }
+            }
+
+            // Mostrar ficha del préstamo seleccionado
+            Console.WriteLine();
+            MostrarFichaPrestamo(prestamos[indicePrestamo], indicePrestamo + 1, usuarios, totalUsuarios, libros, totalLibros);
+            Console.WriteLine();
+
+            // switch-case: elegir el nuevo estado
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("  Nuevo estado del préstamo:");
+            Console.ResetColor();
+            Console.WriteLine("    1. Activo   (préstamo en curso)");
+            Console.WriteLine("    2. Devuelto (libro regresado)");
+            Console.Write("\n  Seleccione una opción: ");
+
+            string opcionEstado = Console.ReadLine().Trim();
+            string nuevoEstado;
+
+            // switch: asignar el nuevo estado según la opción elegida
+            switch (opcionEstado)
+            {
+                case "1":
+                    nuevoEstado = "activo";
+                    break;
+                case "2":
+                    nuevoEstado = "devuelto";
+                    break;
+                default:
+                    Advertencia("Opción no válida. No se realizó ningún cambio.");
+                    Pausar();
+                    return;
+            }
+
+            string estadoAnterior = prestamos[indicePrestamo].Estado;
+
+            // if-else: evitar cambio innecesario al mismo estado
+            if (estadoAnterior.ToLower() == nuevoEstado.ToLower())
+            {
+                Advertencia($"El préstamo ya se encuentra en estado \"{nuevoEstado}\". No se realizó ningún cambio.");
+                Pausar();
+                return;
+            }
+
+            // do-while: confirmar el cambio de estado
+            string respuesta;
+            do
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write($"\n  ¿Confirma el cambio de estado de \"{estadoAnterior}\" a \"{nuevoEstado}\"? (S/N): ");
+                Console.ResetColor();
+                respuesta = Console.ReadLine().Trim().ToUpper();
+
+                if (respuesta != "S" && respuesta != "N")
+                    Advertencia("Ingrese S para confirmar o N para cancelar.");
+
+            } while (respuesta != "S" && respuesta != "N");
+
+            // if-else: aplicar o cancelar el cambio
+            if (respuesta == "N")
+            {
+                Advertencia("Operación cancelada. El estado no fue modificado.");
+                Pausar();
+                return;
+            }
+
+            // Aplicar el cambio de estado
+            prestamos[indicePrestamo].Estado = nuevoEstado;
+
+            // if-else: si se cambia a devuelto, actualizar inventario automáticamente
+            if (nuevoEstado == "devuelto" && estadoAnterior.ToLower() == "activo")
+            {
+                // for: localizar el libro y devolver el ejemplar
+                for (int i = 0; i < totalLibros; i++)
+                {
+                    if (libros[i].Codigo == prestamos[indicePrestamo].CodigoLibro)
+                    {
+                        libros[i].EjemplaresDisponibles++;
+                        Console.WriteLine();
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                        Console.WriteLine($"  [i] Ejemplares de [{libros[i].Codigo}] actualizados: {libros[i].EjemplaresDisponibles} disponible(s).");
+                        Console.ResetColor();
+                        break;
+                    }
+                }
+            }
+
+            Console.WriteLine();
+            Separador();
+            Exito($"Estado actualizado correctamente: \"{estadoAnterior.ToUpper()}\" → \"{nuevoEstado.ToUpper()}\".");
+            Pausar();
+        }
+
+        // ════════════════════════════════════════════════════
+        //  LISTAR TODOS LOS PRÉSTAMOS
+        //  Vista completa con todos los estados.
+        // ════════════════════════════════════════════════════
+        public static void ListarPrestamos(
+            Prestamo[] prestamos, int totalPrestamos,
+            Libro[]    libros,    int totalLibros,
+            Usuario[]  usuarios,  int totalUsuarios)
+        {
+            Console.Clear();
+            Encabezado("LISTADO COMPLETO DE PRÉSTAMOS");
+
+            // if-else: verificar que haya préstamos
+            if (totalPrestamos == 0)
+            {
+                Advertencia("No hay préstamos registrados en el sistema.");
+                Pausar();
+                return;
+            }
+
+            // Contadores para resumen estadístico
+            int activos   = 0;
+            int devueltos = 0;
+
+            // for: primer recorrido — calcular estadísticas
+            for (int i = 0; i < totalPrestamos; i++)
+            {
+                // switch: clasificar por estado
+                switch (prestamos[i].Estado.ToLower())
+                {
+                    case "activo":   activos++;   break;
+                    case "devuelto": devueltos++; break;
+                }
+            }
+
+            // Mostrar resumen estadístico
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine(
+                $"\n  Registrados: {totalPrestamos}/{MAX_PRESTAMOS}   " +
+                $"Activos: {activos}   " +
+                $"Devueltos: {devueltos}"
+            );
+            Console.ResetColor();
+            Console.WriteLine();
+
+            // Encabezado de la tabla
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine(
+                $"  {"N°",-4}{"CARNÉ",-11}{"NOMBRE USUARIO",-24}" +
+                $"{"CÓDIGO",-11}{"TÍTULO",-26}" +
+                $"{"F.PRÉSTAMO",-13}{"F.DEVOLUCIÓN",-14}{"ESTADO",-10}"
+            );
+            Separador();
+            Console.ResetColor();
+
+            // for: segundo recorrido — imprimir cada préstamo
+            for (int i = 0; i < totalPrestamos; i++)
+            {
+                // Buscar nombre del usuario
+                string nombreUsuario = "Desconocido";
+
+                // for: buscar usuario por carné
+                for (int j = 0; j < totalUsuarios; j++)
+                {
+                    if (usuarios[j].Carne == prestamos[i].CarneUsuario)
+                    {
+                        nombreUsuario = usuarios[j].NombreCompleto;
+                        break;
+                    }
+                }
+
+                // Buscar título del libro
+                string tituloLibro = "Desconocido";
+
+                // for: buscar libro por código
+                for (int k = 0; k < totalLibros; k++)
+                {
+                    if (libros[k].Codigo == prestamos[i].CodigoLibro)
+                    {
+                        tituloLibro = libros[k].Titulo;
+                        break;
+                    }
+                }
+
+                // switch: color según estado del préstamo
+                switch (prestamos[i].Estado.ToLower())
+                {
+                    case "activo":
+                        Console.ForegroundColor = ConsoleColor.White;
+                        break;
+                    case "devuelto":
+                        Console.ForegroundColor = ConsoleColor.DarkGray;
+                        break;
+                    default:
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        break;
+                }
+
+                Console.WriteLine(
+                    $"  {(i + 1),-4}" +
+                    $"{prestamos[i].CarneUsuario,-11}" +
+                    $"{Cortar(nombreUsuario, 23),-24}" +
+                    $"{prestamos[i].CodigoLibro,-11}" +
+                    $"{Cortar(tituloLibro, 25),-26}" +
+                    $"{prestamos[i].FechaPrestamo,-13}" +
+                    $"{prestamos[i].FechaDevolucion,-14}" +
+                    $"{prestamos[i].Estado.ToUpper(),-10}"
+                );
+
+                Console.ResetColor();
+            }
+
+            Separador();
+
+            // Leyenda de colores
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.White;    Console.Write("  ■ Activo   ");
+            Console.ForegroundColor = ConsoleColor.DarkGray; Console.Write("■ Devuelto");
+            Console.ResetColor();
+            Console.WriteLine("\n");
+
+            Pausar();
+        }
+
+        // ════════════════════════════════════════════════════
+        //  MÉTODOS DE CAPTURA Y VALIDACIÓN DE FECHAS
+        // ════════════════════════════════════════════════════
+
+        // while: repetir hasta obtener una fecha con formato dd/mm/yyyy válido
+        private static string LeerFecha(string etiqueta)
+        {
+            string fecha  = "";
+            bool   valido = false;
+
+            while (!valido)
+            {
+                Console.Write($"\n  {etiqueta}: ");
+                fecha = Console.ReadLine().Trim();
+
+                // if-else: verificar longitud exacta (dd/mm/yyyy = 10 chars)
+                if (fecha.Length != LONGITUD_FECHA)
+                {
+                    Advertencia($"La fecha debe tener exactamente {LONGITUD_FECHA} caracteres. Formato: dd/mm/yyyy");
+                    continue;
+                }
+
+                // if-else: verificar los separadores en posición 2 y 5
+                if (fecha[2] != '/' || fecha[5] != '/')
+                {
+                    Advertencia("Formato incorrecto. Use barras en las posiciones correctas: dd/mm/yyyy");
+                    continue;
+                }
+
+                // for: verificar que las demás posiciones sean dígitos
+                bool soloDigitos = true;
+                for (int i = 0; i < LONGITUD_FECHA; i++)
+                {
+                    // if-else: saltear posiciones de los separadores
+                    if (i == 2 || i == 5) continue;
+
+                    if (!char.IsDigit(fecha[i]))
+                    {
+                        soloDigitos = false;
+                        break;
+                    }
+                }
+
+                // if-else: informar error de dígitos
+                if (!soloDigitos)
+                {
+                    Advertencia("Solo se permiten dígitos fuera de las barras. Formato: dd/mm/yyyy");
+                    continue;
+                }
+
+                // Validar rangos básicos de día y mes con try-catch
+                try
+                {
+                    int dia = int.Parse(fecha.Substring(0, 2));
+                    int mes = int.Parse(fecha.Substring(3, 2));
+                    int anio = int.Parse(fecha.Substring(6, 4));
+
+                    // if-else: validar rango de día
+                    if (dia < 1 || dia > 31)
+                    {
+                        Advertencia("El día debe estar entre 01 y 31.");
+                        continue;
+                    }
+
+                    // if-else: validar rango de mes
+                    if (mes < 1 || mes > 12)
+                    {
+                        Advertencia("El mes debe estar entre 01 y 12.");
+                        continue;
+                    }
+
+                    // if-else: validar rango de año
+                    if (anio < 2000 || anio > DateTime.Now.Year + 5)
+                    {
+                        Advertencia($"El año debe estar entre 2000 y {DateTime.Now.Year + 5}.");
+                        continue;
+                    }
+
+                    valido = true;
+                }
+                catch (FormatException)
+                {
+                    Advertencia("La fecha contiene caracteres no numéricos. Formato: dd/mm/yyyy");
+                }
+            }
+
+            return fecha;
+        }
+
+        // Leer fecha de devolución validando que sea posterior a la de préstamo
+        private static string LeerFechaDevolucion(string fechaPrestamo)
+        {
+            string fecha  = "";
+            bool   valido = false;
+
+            while (!valido)
+            {
+                fecha = LeerFecha("Fecha estimada de devolución  (dd/mm/yyyy)");
+
+                // Comparar fechas como enteros (yyyymmdd) para validar orden
+                try
+                {
+                    int diaPrestamo  = int.Parse(fechaPrestamo.Substring(0, 2));
+                    int mesPrestamo  = int.Parse(fechaPrestamo.Substring(3, 2));
+                    int anioPrestamo = int.Parse(fechaPrestamo.Substring(6, 4));
+
+                    int diaDev  = int.Parse(fecha.Substring(0, 2));
+                    int mesDev  = int.Parse(fecha.Substring(3, 2));
+                    int anioDev = int.Parse(fecha.Substring(6, 4));
+
+                    // Construir entero comparable yyyymmdd
+                    int enteroFechaPrestamo  = anioPrestamo * 10000 + mesPrestamo * 100 + diaPrestamo;
+                    int enteroFechaDevolucion = anioDev      * 10000 + mesDev      * 100 + diaDev;
+
+                    // if-else: la devolución debe ser igual o posterior al préstamo
+                    if (enteroFechaDevolucion < enteroFechaPrestamo)
+                    {
+                        Advertencia($"La fecha de devolución no puede ser anterior a la de préstamo ({fechaPrestamo}).");
+                    }
+                    else
+                    {
+                        valido = true;
+                    }
+                }
+                catch (FormatException)
+                {
+                    Advertencia("Error al comparar fechas. Verifique el formato ingresado.");
+                }
+            }
+
+            return fecha;
+        }
+
+        // ════════════════════════════════════════════════════
+        //  PRESENTACIÓN DE FICHA DE PRÉSTAMO
+        // ════════════════════════════════════════════════════
+        private static void MostrarFichaPrestamo(
+            Prestamo  p,       int numero,
+            Usuario[] usuarios, int totalUsuarios,
+            Libro[]   libros,   int totalLibros)
+        {
+            // Buscar nombre del usuario
+            string nombreUsuario = "No encontrado";
+
+            // for: localizar al usuario del préstamo
+            for (int i = 0; i < totalUsuarios; i++)
+            {
+                if (usuarios[i].Carne == p.CarneUsuario)
+                {
+                    nombreUsuario = usuarios[i].NombreCompleto;
+                    break;
+                }
+            }
+
+            // Buscar título del libro
+            string tituloLibro = "No encontrado";
+
+            // for: localizar el libro del préstamo
+            for (int i = 0; i < totalLibros; i++)
+            {
+                if (libros[i].Codigo == p.CodigoLibro)
+                {
+                    tituloLibro = libros[i].Titulo;
+                    break;
+                }
+            }
+
+            // switch: color e ícono según estado del préstamo
+            ConsoleColor colorEstado;
+            string       iconoEstado;
+
+            switch (p.Estado.ToLower())
+            {
+                case "activo":
+                    colorEstado = ConsoleColor.Green;
+                    iconoEstado = "● ACTIVO";
+                    break;
+                case "devuelto":
+                    colorEstado = ConsoleColor.DarkGray;
+                    iconoEstado = "○ DEVUELTO";
+                    break;
+                default:
+                    colorEstado = ConsoleColor.Yellow;
+                    iconoEstado = $"? {p.Estado.ToUpper()}";
+                    break;
+            }
+
+            Console.ForegroundColor = ConsoleColor.DarkMagenta;
+            Console.WriteLine($"  ┌─── Préstamo N° {numero} " + new string('─', 30) + "┐");
+            Console.ResetColor();
+
+            FilaFicha("Carné",       p.CarneUsuario);
+            FilaFicha("Usuario",     nombreUsuario);
+            FilaFicha("Cod. Libro",  p.CodigoLibro);
+            FilaFicha("Título",      tituloLibro);
+            FilaFicha("F. Préstamo", p.FechaPrestamo);
+            FilaFicha("F. Devol.",   p.FechaDevolucion);
+
+            // Fila de estado con color dinámico
+            Console.ForegroundColor = ConsoleColor.DarkMagenta;
+            Console.Write("  │  ");
+            Console.ResetColor();
+            Console.Write($"{"Estado",-12}: ");
+            Console.ForegroundColor = colorEstado;
+            Console.WriteLine($"{iconoEstado,-31}│");
+            Console.ResetColor();
+
+            Console.ForegroundColor = ConsoleColor.DarkMagenta;
+            Console.WriteLine("  └" + new string('─', 49) + "┘");
+            Console.ResetColor();
+        }
+
+        private static void FilaFicha(string etiqueta, string valor)
+        {
+            Console.ForegroundColor = ConsoleColor.DarkMagenta;
+            Console.Write("  │  ");
+            Console.ResetColor();
+            Console.Write($"{etiqueta,-12}: ");
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine($"{Cortar(valor, 31),-31}│");
+            Console.ResetColor();
+        }
+
+        // ════════════════════════════════════════════════════
+        //  UTILIDADES
+        // ════════════════════════════════════════════════════
+
+        private static string Cortar(string texto, int max)
+        {
+            if (string.IsNullOrEmpty(texto)) return "";
+            return texto.Length <= max ? texto : texto.Substring(0, max - 1) + "…";
+        }
+
+        private static void Encabezado(string titulo)
+        {
+            int ancho = 52;
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("\n  ╔" + new string('═', ancho) + "╗");
+            Console.WriteLine($"  ║  {titulo.PadRight(ancho - 2)}║");
+            Console.WriteLine("  ╚" + new string('═', ancho) + "╝\n");
+            Console.ResetColor();
+        }
+
+        private static void Separador()
+        {
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine("  " + new string('─', 115));
+            Console.ResetColor();
+        }
+
+        private static void Exito(string msg)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"  [✔] {msg}");
+            Console.ResetColor();
+        }
+
+        private static void Advertencia(string msg)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"  [!] {msg}");
+            Console.ResetColor();
+        }
+
+        private static void Error(string msg)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"  [✖] {msg}");
+            Console.ResetColor();
+        }
+
+        private static void Pausar()
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.Write("  Presione cualquier tecla para continuar...");
+            Console.ResetColor();
+            Console.ReadKey();
+        }
+    }
+}
